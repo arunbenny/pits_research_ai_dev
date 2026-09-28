@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Research Agent</title>
+
+    <!-- Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f4f4;
+            margin: 0;
+        }
+
+        .container {
+            width: 900px;
+            max-width: 92%;
+            margin: 40px auto;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        #chat {
+            background: white;
+            min-height: 450px;
+            max-height: 650px;
+            overflow-y: auto;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 14px;
+            border-radius: 8px;
+            line-height: 1.6;
+        }
+
+        .user {
+            background: #e8e8e8;
+        }
+
+        .assistant {
+            background: #f7f7f7;
+        }
+
+        .error {
+            background: #ffe5e5;
+        }
+
+        .answer {
+            line-height: 1.7;
+        }
+
+        .answer h1,
+        .answer h2,
+        .answer h3,
+        .answer h4 {
+            margin-top: 20px;
+            margin-bottom: 8px;
+        }
+
+        .answer p {
+            margin: 8px 0;
+        }
+
+        .answer ul,
+        .answer ol {
+            padding-left: 25px;
+        }
+
+        .answer a {
+            word-break: break-word;
+        }
+
+        .research-info {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+            font-size: 14px;
+        }
+
+        .activity-box {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .activity-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .activity-item {
+            margin: 6px 0;
+        }
+
+        .activity-status {
+            font-weight: bold;
+        }
+
+        .download-area {
+            margin-top: 18px;
+        }
+
+        .download-button {
+            display: inline-block;
+            padding: 10px 16px;
+            background: #222;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+
+        .download-button:hover {
+            opacity: 0.85;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 20px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .loading-step {
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+<div class="container">
+
+    <h1>Research Agent</h1>
+
+    <div id="chat">
+
+        <div class="message assistant">
+            Hello! What would you like me to research?
+        </div>
+
+    </div>
+
+
+    <div class="input-area">
+
+        <input
+            id="query"
+            type="text"
+            placeholder="Enter your research question..."
+            autocomplete="off"
+        >
+
+        <button
+            id="sendButton"
+            onclick="sendMessage()"
+        >
+            Send
+        </button>
+
+    </div>
+
+</div>
+
+
+<script>
+
+let sessionId = localStorage.getItem(
+    "research_session_id"
+);
+
+
+if (!sessionId) {
+
+    sessionId = crypto.randomUUID();
+
+    localStorage.setItem(
+        "research_session_id",
+        sessionId
+    );
+
+}
+
+
+/*
+--------------------------------------------------
+Send research request
+--------------------------------------------------
+*/
+
+async function sendMessage() {
+
+    const input =
+        document.getElementById("query");
+
+    const chat =
+        document.getElementById("chat");
+
+    const sendButton =
+        document.getElementById("sendButton");
+
+    const query =
+        input.value.trim();
+
+
+    if (!query) {
+        return;
+    }
+
+
+    /*
+    User message
+    */
+
+    chat.insertAdjacentHTML(
+        "beforeend",
+        `
+        <div class="message user">
+
+            <strong>You:</strong>
+
+            <br>
+
+            ${escapeHtml(query)}
+
+        </div>
+        `
+    );
+
+
+    input.value = "";
+
+    sendButton.disabled = true;
+
+
+    /*
+    Loading status
+    */
+
+    chat.insertAdjacentHTML(
+        "beforeend",
+        `
+        <div
+            class="message assistant"
+            id="loading"
+        >
+
+            <strong>
+                Research Agent
+            </strong>
+
+            <div class="loading-step">
+                ⏳ Understanding requirement...
+            </div>
+
+            <div class="loading-step">
+                ⏳ Planning and researching...
+            </div>
+
+            <div class="loading-step">
+                ⏳ Verifying evidence...
+            </div>
+
+            <div class="loading-step">
+                ⏳ Preparing report...
+            </div>
+
+        </div>
+        `
+    );
+
+
+    scrollToBottom();
+
+
+    try {
+
+        const response = await fetch(
+            "/research",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    query: query
+                })
+            }
+        );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                `Request failed with status ${response.status}`
+            );
+
+        }
+
+
+        const data =
+            await response.json();
+
+
+        removeLoading();
+
+
+        /*
+        Clarification required
+        */
+
+        if (
+            data.status ===
+            "clarification_required"
+        ) {
+
+            chat.insertAdjacentHTML(
+                "beforeend",
+                `
+                <div class="message assistant">
+
+                    <strong>
+                        Research Agent:
+                    </strong>
+
+                    <br><br>
+
+                    ${escapeHtml(data.message)}
+
+                </div>
+                `
+            );
+
+
+            scrollToBottom();
+
+            return;
+        }
+
+
+        /*
+        Research completed
+        */
+
+        if (
+            data.status === "completed"
+        ) {
+
+            const answer =
+                renderMarkdown(
+                    data.answer || ""
+                );
+
+
+            const activities =
+                renderActivities(
+                    data.activities || []
+                );
+
+
+            const reportButton =
+                data.report_url
+                    ? `
+                        <div class="download-area">
+
+                            <a
+                                class="download-button"
+                                href="${escapeAttribute(
+                                    data.report_url
+                                )}"
+                            >
+                                Download Research Report
+                            </a>
+
+                        </div>
+                    `
+                    : "";
+
+
+            chat.insertAdjacentHTML(
+                "beforeend",
+                `
+                <div class="message assistant">
+
+                    <strong>
+                        Research Agent:
+                    </strong>
+
+                    <br><br>
+
+
+                    <div class="answer">
+                        ${answer}
+                    </div>
+
+
+                    <div class="research-info">
+
+                        <strong>
+                            Topic:
+                        </strong>
+
+                        ${escapeHtml(
+                            data.topic || ""
+                        )}
+
+                        <br>
+
+                        <strong>
+                            Research tasks:
+                        </strong>
+
+                        ${
+                            Array.isArray(
+                                data.results
+                            )
+                                ? data.results.length
+                                : 0
+                        }
+
+                    </div>
+
+
+                    ${activities}
+
+
+                    ${reportButton}
+
+                </div>
+                `
+            );
+
+
+            scrollToBottom();
+
+            return;
+        }
+
+
+        /*
+        Unknown server response
+        */
+
+        chat.insertAdjacentHTML(
+            "beforeend",
+            `
+            <div class="message error">
+
+                <strong>
+                    Research Agent:
+                </strong>
+
+                <br><br>
+
+                Unexpected response from server.
+
+            </div>
+            `
+        );
+
+
+    } catch (error) {
+
+        removeLoading();
+
+
+        chat.insertAdjacentHTML(
+            "beforeend",
+            `
+            <div class="message error">
+
+                <strong>Error:</strong>
+
+                <br>
+
+                ${escapeHtml(
+                    error.message
+                )}
+
+            </div>
+            `
+        );
+
+
+    } finally {
+
+        sendButton.disabled = false;
+
+        input.focus();
+
+        scrollToBottom();
+
+    }
+
+}
+
+
+/*
+--------------------------------------------------
+Render research activities
+--------------------------------------------------
+*/
+
+function renderActivities(
+    activities
+) {
+
+    if (
+        !Array.isArray(activities)
+        ||
+        activities.length === 0
+    ) {
+        return "";
+    }
+
+
+    let html = `
+        <div class="activity-box">
+
+            <div class="activity-title">
+                Research Activity
+            </div>
+    `;
+
+
+    for (
+        const activity
+        of activities
+    ) {
+
+        const name =
+            escapeHtml(
+                activity.name || ""
+            );
+
+        const details =
+            activity.details
+                ? ` — ${escapeHtml(
+                    activity.details
+                )}`
+                : "";
+
+
+        html += `
+            <div class="activity-item">
+
+                ✓
+
+                <span class="activity-status">
+                    ${name}
+                </span>
+
+                ${details}
+
+            </div>
+        `;
+
+    }
+
+
+    html += `
+        </div>
+    `;
+
+
+    return html;
+}
+
+
+/*
+--------------------------------------------------
+Render Markdown
+--------------------------------------------------
+*/
+
+function renderMarkdown(
+    value
+) {
+
+    if (!value) {
+        return "";
+    }
+
+
+    /*
+    Some LLM responses contain escaped Markdown
+    such as:
+
+    \### Heading
+    \*\*Bold\*\*
+
+    Convert those back before rendering.
+    */
+
+    const normalized =
+        value
+            .replace(
+                /\\([#*_`\-\[\]()])/g,
+                "$1"
+            );
+
+
+    /*
+    marked.parse() converts Markdown into HTML.
+    */
+
+    return marked.parse(
+        normalized
+    );
+}
+
+
+/*
+--------------------------------------------------
+Utility functions
+--------------------------------------------------
+*/
+
+function removeLoading() {
+
+    const loading =
+        document.getElementById(
+            "loading"
+        );
+
+    if (loading) {
+        loading.remove();
+    }
+
+}
+
+
+function scrollToBottom() {
+
+    const chat =
+        document.getElementById(
+            "chat"
+        );
+
+    chat.scrollTop =
+        chat.scrollHeight;
+
+}
+
+
+function escapeHtml(
+    value
+) {
+
+    if (!value) {
+        return "";
+    }
+
+
+    return String(value)
+
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+
+        .replace(
+            /</g,
+            "&lt;"
+        )
+
+        .replace(
+            />/g,
+            "&gt;"
+        )
+
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+function escapeAttribute(
+    value
+) {
+
+    return escapeHtml(
+        String(value || "")
+    );
+
+}
+
+
+/*
+--------------------------------------------------
+Enter key
+--------------------------------------------------
+*/
+
+document
+    .getElementById("query")
+    .addEventListener(
+        "keydown",
+        function(event) {
+
+            if (
+                event.key === "Enter"
+            ) {
+
+                event.preventDefault();
+
+                sendMessage();
+
+            }
+
+        }
+    );
+
+</script>
+
+</body>
+
+</html>
